@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIlBsYXlpbmcgQ2FyZCBDb2xsZWN0aW9uIiwKICAic2hvcnRfbmFtZSI6ICJQQyBDYWNoZSIsCiAgInN0YXJ0X3VybCI6ICIuL2luZGV4Lmh0bWwiLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMxYTFhMmUiLAogICJ0aGVtZV9jb2xvciI6ICIjMWEgMWEgMmUiLAogICJpY29ucyI6IFtdCn0=">
+  <title>Playing Card Collection</title>
+  <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f1a; color: #eee; padding-bottom: 20px;
+    }
+    .app-bar {
+      background: #1a1a2e; padding: 12px 16px; display: flex; align-items: center;
+      justify-content: space-between; position: sticky; top: 0; z-index: 10;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    .app-bar h1 { font-size: 1.5rem; color: #ffd700; }
+    .menu-btn { background: none; border: none; color: #fff; font-size: 1.8rem; cursor: pointer; }
+    .drawer {
+      position: fixed; top: 0; left: -280px; width: 280px; height: 100%;
+      background: #16213e; transition: left 0.3s; z-index: 20; padding: 16px;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    }
+    .drawer.open { left: 0; }
+    .drawer a {
+      display: block; color: #ccc; padding: 12px; text-decoration: none;
+      border-radius: 8px; margin-bottom: 4px; font-size: 1.1rem;
+    }
+    .drawer a.active { background: #0f3460; color: #ffd700; }
+    .overlay { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); z-index: 15; display: none; }
+    .overlay.show { display: block; }
+
+    .container { padding: 16px; max-width: 1650px; margin: auto; }
+    .search-bar {
+      width: 100%; padding: 12px; border-radius: 8px; border: none;
+      background: #1a1a2e; color: #fff; margin-bottom: 12px; font-size: 1rem;
+    }
+    .filter-chips {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+    }
+    .chip {
+      background: #16213e; padding: 6px 12px; border-radius: 20px;
+      font-size: 0.85rem; cursor: pointer; border: 1px solid #0f3460;
+    }
+    .chip.active { background: #ffd700; color: #000; border-color: #ffd700; }
+    .deck-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 16px;
+    }
+    .deck-card {
+      background: #16213e; border-radius: 12px; overflow: hidden;
+      cursor: pointer; transition: transform 0.2s; position: relative;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .deck-card:hover { transform: scale(1.02); }
+    .deck-card img {
+      width: 100%; height: 160px; object-fit: cover; background: #1a1a2e;
+      transition: opacity 0.2s;
+    }
+    .deck-card .info { padding: 8px 12px; }
+    .deck-card .name { font-weight: bold; font-size: 0.95rem; }
+    .deck-card .brand { color: #aaa; font-size: 0.8rem; }
+    .badge {
+      position: absolute; top: 8px; right: 8px; background: #e94560;
+      color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;
+    }
+    .fab {
+      position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px;
+      background: #ffd700; border: none; border-radius: 50%; font-size: 2rem;
+      color: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.5); cursor: pointer;
+      z-index: 10; display: flex; align-items: center; justify-content: center;
+    }
+    .modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.7); display: flex; align-items: center;
+      justify-content: center; z-index: 30; display: none;
+    }
+    .modal.active { display: flex; }
+    .modal-content {
+      background: #16213e; padding: 20px; border-radius: 16px;
+      width: 90%; max-width: 500px; max-height: 80vh; overflow-y: auto;
+    }
+    .modal-content h2 { color: #ffd700; margin-bottom: 12px; }
+    #imageModal {
+      background: rgba(0,0,0,0.9);
+      z-index: 40;
+    }
+    #imageModal .modal-content {
+      background: transparent;
+      max-width: 90vw;
+      max-height: 90vh;
+      width: auto;
+      padding: 0;
+      overflow: visible;
+      box-shadow: none;
+    }
+    #imageModal img {
+      max-width: 90vw;
+      max-height: 90vh;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: block; margin-bottom: 4px; color: #ccc; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 10px; border-radius: 8px; border: none;
+      background: #1a1a2e; color: #fff;
+    }
+    .series-jump-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+      position: sticky;
+      top: 60px;
+      background: #0f0f1a;
+      padding: 10px 0;
+      z-index: 5;
+    }
+    .series-jump-bar .jump-chip {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #ccc;
+    }
+    .series-jump-bar .jump-chip.active {
+      background: #ffd700;
+      color: #000;
+      border-color: #ffd700;
+    }
+    .series-section {
+      margin-bottom: 24px;
+    }
+    .series-section h3 {
+      color: #ffd700;
+      border-bottom: 1px solid #0f3460;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+    }
+    .series-deck-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-left: 12px;
+    }
+    .series-deck-item {
+      background: #1a1a2e;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .series-deck-item:hover {
+      background: #0f3460;
+    }
+    button.primary {
+      background: #ffd700; color: #000; border: none; padding: 12px 24px;
+      border-radius: 8px; font-weight: bold; cursor: pointer;
+      margin-right: 8px;
+    }
+    button.secondary {
+      background: #3a3a5c; color: #fff; border: none;
+      padding: 12px 24px; border-radius: 8px; cursor: pointer;
+      font-weight: bold;
+    }
+    button.danger { background: #e94560; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
+    button.other { background: #5047ff; color: #fff; border: none; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    .photo-preview { display: flex; gap: 8px; flex-wrap: wrap; }
+    .photo-preview img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: #16213e; padding: 16px; border-radius: 12px; text-align: center; }
+    .stat-card .value { font-size: 2rem; color: #ffd700; }
+    .btn-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    @media (min-width: 768px) {
+      .container { margin-left: 280px; }
+      .app-bar { margin-left: 280px; }
+      .drawer { left: 0; }
+      .menu-btn { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="app-bar">
+      <button class="menu-btn" onclick="toggleDrawer()">☰</button>
+      <h1>🃏 Playing Card Collection</h1>
+      <div></div>
+    </div>
+
+    <div class="drawer" id="drawer">
+      <a href="#" class="active" data-view="decks" onclick="switchView('decks')">📚 All Decks</a>
+      <a href="#" data-view="series" onclick="switchView('series')">📁 Series</a>
+      <a href="#" data-view="wishlist" onclick="switchView('wishlist')">⭐ Wishlist</a>
+      <a href="#" data-view="trade" onclick="switchView('trade')">💰 Trade/Sell</a>
+      <a href="#" data-view="stats" onclick="switchView('stats')">📊 Statistics</a>
+      <hr style="border-color:#0f3460; margin:12px 0">
+      <a href="#" onclick="exportData()">💾 Export Backup</a>
+      <a href="#" onclick="document.getElementById('importFile').click()">📥 Import Backup</a>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+    <div class="overlay" id="overlay" onclick="toggleDrawer()"></div>
+
+    <div class="container" id="mainContent"></div>
+
+    <button class="fab" id="fab" onclick="openAddDeckModal()">+</button>
+
+    <div class="modal" id="deckModal"></div>
+    <div class="modal" id="copyModal"></div>
+    <div class="modal" id="wishModal"></div>
+    <div class="modal" id="editDeckModal"></div>
+    <div class="modal" id="imageModal" onclick="closeImageModal()"></div>
+  </div>
+
+  <script>
+    // ------------------ DATABASE ------------------
+    const db = new Dexie("CardCacheDB");
+    db.version(1).stores({
+      decks: "++id, name, brand, seriesId, *tags",
+      copies: "++id, deckId, condition, tradeStatus",
+      series: "++id, &name",
+      wishlist: "++id, name",
+      tags: "&name"
+    });
+
+    // ------------------ IMAGE → BLOB (with legacy base64 support) ------------------
+    function compressImage(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width, height = img.height;
+            if (width > 400) { height *= 400 / width; width = 400; }
+            canvas.width = width; canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.7);
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // Object URL helpers with per-view cleanup
+    function photoUrl(blob) {
+      if (!blob) return '';
+      if (typeof blob === 'string') return blob; // legacy base64
+      return URL.createObjectURL(blob);
+    }
+    function trackedUrl(blob, tracker) {
+      const url = photoUrl(blob);
+      if (url && url.startsWith('blob:') && tracker) tracker.push(url);
+      return url;
+    }
+
+    let gridUrls = [];
+    let detailUrls = [];
+    let editUrls = [];
+    let seriesUrls = [];
+    let wishlistUrls = [];
+
+    function revokeAll(arr) { arr.forEach(u => URL.revokeObjectURL(u)); arr.length = 0; }
+
+    // Blob ↔ dataURL for backup
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    function dataUrlToBlob(dataUrl) {
+      const [meta, b64] = dataUrl.split(',');
+      const mime = meta.match(/:(.*?);/)[1];
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    }
+
+    // ------------------ GLOBAL STATE ------------------
+    let currentView = 'decks';
+    let currentDeckId = null;
+    let allSeries = [];
+    let searchTerm = '';
+    let activeFilters = { brand: null, tags: null };
+    let searchDebounceTimer = null;
+    let pendingWishlistItem = null;
+
+    // Sort mode persisted in localStorage
+    let sortMode = 'name';
+    try { sortMode = localStorage.getItem('pcc_sortMode') || 'name'; } catch(e) {}
+
+    // ------------------ UI RENDER ------------------
+    const mainContent = document.getElementById('mainContent');
+    const fab = document.getElementById('fab');
+
+    function switchView(view) {
+      currentView = view;
+      document.querySelectorAll('.drawer a[data-view]').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.drawer a[data-view="${view}"]`)?.classList.add('active');
+      if (window.innerWidth < 768) toggleDrawer(false);
+      renderView();
+    }
+
+    function toggleDrawer(force) {
+      const drawer = document.getElementById('drawer');
+      const overlay = document.getElementById('overlay');
+      if (force !== undefined) {
+        drawer.classList.toggle('open', force);
+        overlay.classList.toggle('show', force);
+      } else {
+        drawer.classList.toggle('open');
+        overlay.classList.toggle('show');
+      }
+    }
+
+    async function renderView() {
+      fab.style.display = (currentView === 'decks' || currentView === 'wishlist' || currentView === 'series') ? 'flex' : 'none';
+      switch (currentView) {
+        case 'decks': await renderDecks(); break;
+        case 'series': await renderSeries(); break;
+        case 'wishlist': await renderWishlist(); break;
+        case 'trade': await renderTradeList(); break;
+        case 'stats': await renderStats(); break;
+      }
+    }
+
+    // ------------------ CLEANUP ORPHANED DATA ------------------
+    async function cleanupOrphanedSeriesAndTags() {
+      const allDecks = await db.decks.toArray();
+      const usedSeriesIds = new Set(allDecks.map(d => d.seriesId).filter(id => id != null));
+      const usedTags = new Set(allDecks.flatMap(d => d.tags || []));
+
+      const allSeriesList = await db.series.toArray();
+      for (let s of allSeriesList) {
+        if (!usedSeriesIds.has(s.id)) await db.series.delete(s.id);
+      }
+      const allTagsList = await db.tags.toArray();
+      for (let t of allTagsList) {
+        if (!usedTags.has(t.name)) await db.tags.delete(t.name);
+      }
+    }
+
+    // ------------------ DECKS ------------------
+    async function renderDecks(isGridOnly = false) {
+      const allDecks = await db.decks.toArray();
+      const allCopies = await db.copies.toArray();
+      const copiesByDeck = {};
+      allCopies.forEach(c => {
+        if (!copiesByDeck[c.deckId]) copiesByDeck[c.deckId] = [];
+        copiesByDeck[c.deckId].push(c);
+      });
+
+      const brands = [...new Set(allDecks.map(d => d.brand).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      const tags = [...new Set(allDecks.flatMap(d => d.tags || []))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      let decks = [...allDecks];
+      if (searchTerm) {
+        const s = searchTerm.toLowerCase();
+        decks = decks.filter(d => d.name.toLowerCase().includes(s) || (d.brand && d.brand.toLowerCase().includes(s)));
+      }
+      if (activeFilters.brand) decks = decks.filter(d => d.brand === activeFilters.brand);
+      if (activeFilters.tag) decks = decks.filter(d => d.tags && d.tags.includes(activeFilters.tag));
+
+      if (sortMode === 'copies') {
+        decks.sort((a, b) => (copiesByDeck[b.id]?.length || 0) - (copiesByDeck[a.id]?.length || 0)
+          || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      } else if (sortMode === 'brand') {
+        decks.sort((a, b) => (a.brand || '~').localeCompare(b.brand || '~', undefined, { sensitivity: 'base' })
+          || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      } else {
+        decks.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+      }
+
+      const deckGridEl = document.getElementById('deckGrid');
+
+      if (isGridOnly && deckGridEl) {
+        await updateDeckGridHTML(deckGridEl, decks, copiesByDeck);
+        return;
+      }
+
+      let html = `<input class="search-bar" id="searchInput" placeholder="Search decks..." value="${searchTerm}" oninput="handleSearchInput(this.value)">`;
+      html += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+        <label style="color:#aaa; font-size:0.9rem;">Sort:</label>
+        <select id="sortSelect" onchange="setSortMode(this.value)" style="background:#1a1a2e;color:#fff;padding:8px;border-radius:8px;border:none;font-size:0.9rem;">
+          <option value="name" ${sortMode==='name'?'selected':''}>Name (A-Z)</option>
+          <option value="brand" ${sortMode==='brand'?'selected':''}>Brand (A-Z)</option>
+          <option value="copies" ${sortMode==='copies'?'selected':''}>Copies Count</option>
+        </select>
+      </div>`;
+      html += `<div class="filter-chips">`;
+      html += `<span class="chip ${!activeFilters.brand?'active':''}" onclick="clearFilter('brand')">All Brands</span>`;
+      brands.forEach(b => html += `<span class="chip ${activeFilters.brand===b?'active':''}" onclick="setFilter('brand','${b}')">${b}</span>`);
+      html += `</div><div class="filter-chips">`;
+      html += `<span class="chip ${!activeFilters.tag?'active':''}" onclick="clearFilter('tag')">All Tags</span>`;
+tags.forEach(t => html += `<span class="chip ${activeFilters.tag===t?'active':''}" onclick="setFilter('tag','${t}')">${t}</span>`);
+      html += `</div>`;
+
+      html += `<div class="deck-grid" id="deckGrid"></div>`;
+      mainContent.innerHTML = html;
+
+      await updateDeckGridHTML(document.getElementById('deckGrid'), decks, copiesByDeck);
+    }
+
+    async function updateDeckGridHTML(containerEl, decks, copiesByDeck) {
+      if (!containerEl) return;
+      revokeAll(gridUrls);
+
+      let html = '';
+      for (let deck of decks) {
+        const copies = copiesByDeck[deck.id] || [];
+        const count = copies.length;
+        const frontBlob = deck.photos && deck.photos.length > 0 ? deck.photos[0] : null;
+        const backBlob = deck.photos && deck.photos.length > 1 ? deck.photos[1] : frontBlob;
+        const frontUrl = trackedUrl(frontBlob, gridUrls);
+        const backUrl = trackedUrl(backBlob, gridUrls);
+        html += `<div class="deck-card" data-front="${frontUrl}" data-back="${backUrl}" onclick="openDeckDetail(${deck.id})">
+          ${frontUrl ? `<img src="${frontUrl}" alt="">` : `<div style="height:160px;background:#0f3460;display:flex;align-items:center;justify-content:center;">🃏</div>`}
+          <div class="info"><div class="name">${deck.name}</div><div class="brand">${deck.brand || ''}</div></div>
+          <div class="badge">${count}</div>
+        </div>`;
+      }
+      containerEl.innerHTML = html;
+
+      const cards = containerEl.querySelectorAll('.deck-card');
+      cards.forEach(card => {
+        card.addEventListener('mouseenter', handleDeckHover);
+        card.addEventListener('mouseleave', handleDeckUnhover);
+      });
+    }
+
+    function handleSearchInput(value) {
+      searchTerm = value;
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        renderDecks(true);
+      }, 150);
+    }
+
+    function handleDeckHover(e) {
+      const card = e.currentTarget;
+      const img = card.querySelector('img');
+      if (img && card.dataset.back && card.dataset.back !== img.src) {
+        img.src = card.dataset.back;
+      }
+    }
+
+    function handleDeckUnhover(e) {
+      const card = e.currentTarget;
+      const img = card.querySelector('img');
+      if (img && card.dataset.front && card.dataset.front !== img.src) {
+        img.src = card.dataset.front;
+      }
+    }
+
+    function setFilter(type, value) { activeFilters[type] = value; renderDecks(); }
+    function clearFilter(type) { activeFilters[type] = null; renderDecks(); }
+    function setSortMode(v) {
+      sortMode = v;
+      try { localStorage.setItem('pcc_sortMode', v); } catch(e) {}
+      renderDecks(true);
+    }
+
+    // ------------------ ADD DECK (with first copy) ------------------
+    async function openAddDeckModal() {
+      allSeries = await db.series.toArray();
+      let html = `<div class="modal-content"><h2>Add New Deck</h2>
+        <div class="form-group"><label>Name</label><input id="deckName" placeholder="Deck name"></div>
+        <div class="form-group"><label>Brand</label><input id="deckBrand" list="brandList" placeholder="Brand" autocomplete="off">
+          <datalist id="brandList"></datalist></div>
+        <div class="form-group"><label>Series</label><input id="deckSeries" list="seriesList" placeholder="Type to select or add new series" autocomplete="off">
+          <datalist id="seriesList"></datalist></div>
+        <div class="form-group"><label>Tags (comma separated)</label><input id="deckTags" placeholder="e.g., foil, gilded"></div>
+        <div class="form-group"><label>Photos</label><input type="file" id="deckPhotos" multiple accept="image/*"></div>
+        <div class="form-group"><label>Notes</label><textarea id="deckNotes" rows="2"></textarea></div>
+        <div class="form-group"><label>First Copy Condition</label>
+          <select id="firstCopyCondition">
+            <option selected>Sealed</option>
+            <option>Opened</option>
+            <option>Used</option>
+          </select>
+        </div>
+        <button class="primary" onclick="saveDeck()">Save Deck</button>
+        <button class="secondary" onclick="closeModal('deckModal')">Cancel</button></div>`;
+      document.getElementById('deckModal').innerHTML = html;
+      document.getElementById('deckModal').classList.add('active');
+
+      const brands = [...new Set((await db.decks.toArray()).map(d => d.brand).filter(Boolean))];
+      document.getElementById('brandList').innerHTML = brands.map(b => `<option value="${b}">`).join('');
+      document.getElementById('seriesList').innerHTML = allSeries.map(s => `<option value="${s.name}">`).join('');
+    }
+
+    async function saveDeck() {
+      const name = document.getElementById('deckName').value.trim();
+      if (!name) return alert('Name required');
+      const brand = document.getElementById('deckBrand').value.trim();
+      const seriesInput = document.getElementById('deckSeries').value.trim();
+      const tagsInput = document.getElementById('deckTags').value;
+      const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const notes = document.getElementById('deckNotes').value;
+      const firstCondition = document.getElementById('firstCopyCondition').value;
+      const photoFiles = document.getElementById('deckPhotos').files;
+      let photos = [];
+
+      // Include wishlist photo if converting
+      if (pendingWishlistItem && pendingWishlistItem.photo) {
+        photos.push(pendingWishlistItem.photo);
+      }
+      for (let file of photoFiles) {
+        photos.push(await compressImage(file));
+      }
+
+      let seriesId = null;
+      if (seriesInput) {
+        const existing = await db.series.where('name').equalsIgnoreCase(seriesInput).first();
+        if (existing) seriesId = existing.id;
+        else seriesId = await db.series.put({ name: seriesInput });
+      }
+
+      const deckId = await db.decks.add({ name, brand, seriesId, tags, notes, photos });
+      await db.copies.add({ deckId, condition: firstCondition, tradeStatus: null, askingPrice: null, notes: '' });
+
+      for (let tag of tags) {
+        if (!(await db.tags.get(tag))) await db.tags.put({ name: tag });
+      }
+
+      // Remove wishlist item if converted
+      if (pendingWishlistItem) {
+        await db.wishlist.delete(pendingWishlistItem.id);
+      }
+
+      closeModal('deckModal');
+      renderView();
+    }
+
+    // ------------------ DECK DETAIL & EDIT ------------------
+    async function openDeckDetail(id) {
+      currentDeckId = id;
+      revokeAll(detailUrls);
+
+      const deck = await db.decks.get(id);
+      const copies = await db.copies.where({deckId: id}).toArray();
+      const seriesName = deck.seriesId ? (await db.series.get(deck.seriesId))?.name || '' : '';
+      const photoHtml = (deck.photos || []).map(p => {
+        const url = trackedUrl(p, detailUrls);
+        return `<img src="${url}" onclick="event.stopPropagation(); openImage('${url}')" style="cursor:pointer;">`;
+      }).join('');
+
+      let html = `<div class="modal-content"><h2>${deck.name}</h2>
+        <p><strong>Brand:</strong> ${deck.brand || '-'}</p>
+        <p><strong>Series:</strong> ${seriesName || '-'}</p>
+        <p><strong>Tags:</strong> ${deck.tags?.join(', ') || '-'}</p>
+        <p><strong>Notes:</strong> ${deck.notes || '-'}</p>
+        <div class="photo-preview">${photoHtml}</div>
+        <h3>Copies (${copies.length})</h3>`;
+      copies.forEach((c,i) => {
+        html += `<div style="background:#1a1a2e;padding:8px;border-radius:8px;margin-bottom:8px">
+          <strong>#${i+1}</strong> ${c.condition} ${c.tradeStatus ? '💰' : ''} 
+          <button class="primary" onclick="editCopy(${c.id})">Edit</button>
+          <button class="danger" onclick="deleteCopy(${c.id})">Delete</button>
+        </div>`;
+      });
+      html += `<div class="btn-group">
+        <button class="primary" onclick="addCopy(${deck.id})">Add Copy</button>
+        <button class="primary" onclick="openEditDeck(${deck.id})">Edit Deck</button>
+        <button class="danger" onclick="deleteDeck(${deck.id})">Delete Deck</button>
+        <button class="secondary" onclick="closeModal('deckModal')">Close</button>
+      </div></div>`;
+      document.getElementById('deckModal').innerHTML = html;
+      document.getElementById('deckModal').classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+      if (id === 'deckModal') {
+        revokeAll(detailUrls);
+        pendingWishlistItem = null;
+      }
+      if (id === 'editDeckModal') {
+        revokeAll(editUrls);
+      }
+    }
+
+    async function deleteDeck(id) {
+      if (!confirm('Delete this deck and all its copies?')) return;
+      await db.copies.where({deckId: id}).delete();
+      await db.decks.delete(id);
+      await cleanupOrphanedSeriesAndTags();
+      closeModal('deckModal');
+      renderDecks();
+    }
+
+    async function openEditDeck(deckId) {
+      const deck = await db.decks.get(deckId);
+      allSeries = await db.series.toArray();
+      revokeAll(editUrls);
+
+      const photoHtml = (deck.photos || []).map((p,i) => {
+        const url = trackedUrl(p, editUrls);
+        return `<div style="position:relative"><img src="${url}"><button class="danger" style="position:absolute;top:0;right:0;font-size:0.7rem;padding:2px" onclick="removePhoto(${deckId}, ${i})">✕</button></div>`;
+      }).join('');
+
+      let html = `<div class="modal-content"><h2>Edit Deck</h2>
+        <div class="form-group"><label>Name</label><input id="editDeckName" value="${deck.name}"></div>
+        <div class="form-group"><label>Brand</label><input id="editDeckBrand" list="brandListEdit" value="${deck.brand || ''}" autocomplete="off">
+          <datalist id="brandListEdit"></datalist></div>
+        <div class="form-group"><label>Series</label><input id="editDeckSeries" list="seriesListEdit" value="${deck.seriesId ? (await db.series.get(deck.seriesId))?.name || '' : ''}" placeholder="Type to select or add new series" autocomplete="off">
+          <datalist id="seriesListEdit"></datalist></div>
+        <div class="form-group"><label>Tags (comma separated)</label><input id="editDeckTags" value="${deck.tags?.join(', ') || ''}"></div>
+        <div class="form-group"><label>Current Photos</label>
+          <div class="photo-preview" id="editPhotoPreviews">${photoHtml}</div>
+        </div>
+        <div class="form-group"><label>Add New Photos</label><input type="file" id="editDeckPhotos" multiple accept="image/*"></div>
+        <div class="form-group"><label>Notes</label><textarea id="editDeckNotes" rows="2">${deck.notes || ''}</textarea></div>
+        <div class="btn-group">
+          <button class="primary" onclick="updateDeck(${deckId})">Save Changes</button>
+          <button class="secondary" onclick="closeModal('editDeckModal')">Cancel</button>
+        </div></div>`;
+      document.getElementById('editDeckModal').innerHTML = html;
+      document.getElementById('editDeckModal').classList.add('active');
+
+      const brands = [...new Set((await db.decks.toArray()).map(d => d.brand).filter(Boolean))];
+      document.getElementById('brandListEdit').innerHTML = brands.map(b => `<option value="${b}">`).join('');
+      document.getElementById('seriesListEdit').innerHTML = allSeries.map(s => `<option value="${s.name}">`).join('');
+    }
+
+    async function removePhoto(deckId, index) {
+      const deck = await db.decks.get(deckId);
+      deck.photos.splice(index, 1);
+      await db.decks.update(deckId, { photos: deck.photos });
+      openEditDeck(deckId);
+    }
+
+    async function updateDeck(deckId) {
+      const name = document.getElementById('editDeckName').value.trim();
+      if (!name) return alert('Name required');
+      const brand = document.getElementById('editDeckBrand').value.trim();
+      const seriesInput = document.getElementById('editDeckSeries').value.trim();
+      const tagsInput = document.getElementById('editDeckTags').value;
+      const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const notes = document.getElementById('editDeckNotes').value;
+      const newPhotoFiles = document.getElementById('editDeckPhotos').files;
+      const deck = await db.decks.get(deckId);
+      let photos = [...deck.photos];
+      for (let file of newPhotoFiles) {
+        photos.push(await compressImage(file));
+      }
+
+      let seriesId = null;
+      if (seriesInput) {
+        const existing = await db.series.where('name').equalsIgnoreCase(seriesInput).first();
+        if (existing) seriesId = existing.id;
+        else seriesId = await db.series.put({ name: seriesInput });
+      }
+
+      await db.decks.update(deckId, { name, brand, seriesId, tags, notes, photos });
+      for (let tag of tags) {
+        if (!(await db.tags.get(tag))) await db.tags.put({ name: tag });
+      }
+      await cleanupOrphanedSeriesAndTags();
+      closeModal('editDeckModal');
+      openDeckDetail(deckId);
+    }
+
+    function openImage(src) {
+      const modal = document.getElementById('imageModal');
+      modal.innerHTML = `<div class="modal-content"><img src="${src}" alt="Enlarged view"></div>`;
+      modal.classList.add('active');
+    }
+
+    function closeImageModal() {
+      const modal = document.getElementById('imageModal');
+      modal.classList.remove('active');
+      modal.innerHTML = '';
+    }
+
+    // ------------------ COPIES ------------------
+    async function addCopy(deckId) {
+      let html = `<div class="modal-content"><h2>Add Copy</h2>
+        <div class="form-group"><label>Condition</label>
+          <select id="copyCondition">
+            <option>Sealed</option>
+            <option>Opened</option>
+            <option>Used</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Notes</label><textarea id="copyNotes" rows="2"></textarea></div>
+        <div class="form-group">
+          <label><input type="checkbox" id="copyTrade"> For Trade/Sale</label>
+          Price: <input type="number" step="0.01" id="copyPrice" placeholder="0.00">
+        </div>
+        <button class="primary" onclick="saveCopy(${deckId})">Save</button>
+        <button class="secondary" onclick="closeModal('copyModal')">Cancel</button></div>`;
+      document.getElementById('copyModal').innerHTML = html;
+      document.getElementById('copyModal').classList.add('active');
+    }
+
+    async function saveCopy(deckId) {
+      const condition = document.getElementById('copyCondition').value;
+      const notes = document.getElementById('copyNotes').value;
+      const trade = document.getElementById('copyTrade').checked;
+      const price = document.getElementById('copyPrice').value;
+      await db.copies.add({
+        deckId, condition, notes,
+        tradeStatus: trade ? 'For Sale' : null,
+        askingPrice: price ? parseFloat(price) : null
+      });
+      closeModal('copyModal');
+      openDeckDetail(deckId);
+    }
+
+    async function editCopy(copyId) {
+      const copy = await db.copies.get(copyId);
+      let html = `<div class="modal-content"><h2>Edit Copy</h2>
+        <div class="form-group"><label>Condition</label>
+          <select id="copyCondition">
+            <option ${copy.condition==='Sealed'?'selected':''}>Sealed</option>
+            <option ${copy.condition==='Opened'?'selected':''}>Opened</option>
+            <option ${copy.condition==='Used'?'selected':''}>Used</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Notes</label><textarea id="copyNotes">${copy.notes || ''}</textarea></div>
+        <div class="form-group">
+          <label><input type="checkbox" id="copyTrade" ${copy.tradeStatus?'checked':''}> For Trade/Sale</label>
+          Price: <input type="number" step="0.01" id="copyPrice" value="${copy.askingPrice || ''}" placeholder="0.00">
+        </div>
+        <button class="primary" onclick="updateCopy(${copyId}, ${copy.deckId})">Update</button>
+        <button class="secondary" onclick="closeModal('copyModal')">Cancel</button></div>`;
+      document.getElementById('copyModal').innerHTML = html;
+      document.getElementById('copyModal').classList.add('active');
+    }
+
+    async function updateCopy(copyId, deckId) {
+      const condition = document.getElementById('copyCondition').value;
+      const notes = document.getElementById('copyNotes').value;
+      const trade = document.getElementById('copyTrade').checked;
+      const price = document.getElementById('copyPrice').value;
+      await db.copies.update(copyId, {
+        condition, notes,
+        tradeStatus: trade ? 'For Sale' : null,
+        askingPrice: price ? parseFloat(price) : null
+      });
+      closeModal('copyModal');
+      openDeckDetail(deckId);
+    }
+
+    async function deleteCopy(copyId) {
+      if (!confirm('Delete this copy?')) return;
+      await db.copies.delete(copyId);
+      openDeckDetail(currentDeckId);
+    }
+
+    // ------------------ SERIES ------------------
+    async function renderSeries() {
+      revokeAll(seriesUrls);
+      const allDecks = await db.decks.toArray();
+      const decksWithSeries = allDecks.filter(d => d.seriesId != null);
+
+      if (decksWithSeries.length === 0) {
+        mainContent.innerHTML = `<h2>📁 Series</h2><p>No decks are part of a series yet.</p>`;
+        return;
+      }
+
+      const seriesMap = new Map();
+      const seriesIds = [...new Set(decksWithSeries.map(d => d.seriesId))];
+      for (let sid of seriesIds) {
+        const series = await db.series.get(sid);
+        const name = series ? series.name : 'Unknown Series';
+        seriesMap.set(sid, { name, decks: [] });
+      }
+      for (let deck of decksWithSeries) {
+        seriesMap.get(deck.seriesId).decks.push(deck);
+      }
+
+      const seriesEntries = Array.from(seriesMap.values());
+      seriesEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+      const letters = seriesEntries.map(s => {
+        const first = s.name.charAt(0).toUpperCase();
+        return /[A-Z]/.test(first) ? first : '#';
+      });
+      const uniqueLetters = [...new Set(letters)];
+
+      let html = `<h2>📁 Series</h2>`;
+      html += `<div class="series-jump-bar">`;
+      for (let letter of uniqueLetters) {
+        html += `<div class="jump-chip" onclick="jumpToSeriesLetter('${letter}')">${letter}</div>`;
+      }
+      html += `</div>`;
+
+      for (let entry of seriesEntries) {
+        const firstLetter = entry.name.charAt(0).toUpperCase();
+        const letterId = /[A-Z]/.test(firstLetter) ? firstLetter : '#';
+        html += `<div class="series-section" id="series-letter-${letterId}">`;
+        html += `<h3>${entry.name}</h3>`;
+        html += `<div class="series-deck-list">`;
+        entry.decks.forEach(deck => {
+          const frontBlob = (deck.photos && deck.photos.length > 0) ? deck.photos[0] : null;
+          const frontUrl = trackedUrl(frontBlob, seriesUrls);
+          html += `<div class="series-deck-item" onclick="openDeckDetail(${deck.id})">
+            ${frontUrl ? `<img src="${frontUrl}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px;">` : ''}
+            ${deck.name}
+          </div>`;
+        });
+        html += `</div></div>`;
+      }
+
+      mainContent.innerHTML = html;
+    }
+
+    function jumpToSeriesLetter(letter) {
+      const el = document.getElementById(`series-letter-${letter}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ------------------ WISHLIST ------------------
+    async function renderWishlist() {
+      revokeAll(wishlistUrls);
+      const items = await db.wishlist.toArray();
+      let html = `<h2>⭐ Wishlist</h2>`;
+      items.forEach(item => {
+        const imgUrl = trackedUrl(item.photo, wishlistUrls);
+        html += `<div style="background:#16213e;padding:12px;border-radius:8px;margin-bottom:8px;display:flex;align-items:center;gap:12px">
+          ${imgUrl ? `<img src="${imgUrl}" style="width:60px;height:60px;object-fit:cover;border-radius:8px">` : ''}
+          <div style="flex:1"><strong>${item.name}</strong><br><small>${item.url||''}</small></div>
+          <button class="primary" style="padding:8px 12px;font-size:0.8rem;" onclick="convertWishToCollection(${item.id})">Mark as Owned</button>
+          <button onclick="deleteWish(${item.id})">🗑️</button></div>`;
+      });
+      html += `<button class="primary" onclick="openAddWish()">Add Wish</button>`;
+      mainContent.innerHTML = html;
+    }
+
+    async function convertWishToCollection(wishId) {
+      const item = await db.wishlist.get(wishId);
+      if (!item) return;
+      pendingWishlistItem = item;
+      await openAddDeckModal();
+      document.getElementById('deckName').value = item.name;
+      if (item.photo) {
+        const previewDiv = document.createElement('div');
+        previewDiv.style.marginBottom = '12px';
+        previewDiv.innerHTML = `<p style="color:#aaa;font-size:0.85rem;margin-bottom:6px;">Wishlist photo (will be included):</p>
+          <div class="photo-preview"><img src="${trackedUrl(item.photo, wishlistUrls)}"></div>`;
+        const deckPhotosGroup = document.getElementById('deckPhotos').closest('.form-group');
+        deckPhotosGroup.parentNode.insertBefore(previewDiv, deckPhotosGroup);
+      }
+    }
+
+    function openAddWish() {
+      let html = `<div class="modal-content"><h2>Add to Wishlist</h2>
+        <div class="form-group"><label>Name</label><input id="wishName"></div>
+        <div class="form-group"><label>Photo</label><input type="file" id="wishPhoto" accept="image/*"></div>
+        <div class="form-group"><label>URL</label><input id="wishUrl"></div>
+        <button class="primary" onclick="saveWish()">Save</button>
+        <button class="secondary" onclick="closeModal('wishModal')">Cancel</button></div>`;
+      document.getElementById('wishModal').innerHTML = html;
+      document.getElementById('wishModal').classList.add('active');
+    }
+
+    async function saveWish() {
+      const name = document.getElementById('wishName').value.trim();
+      if (!name) return alert('Name required');
+      const photoFile = document.getElementById('wishPhoto').files[0];
+      let photo = null;
+      if (photoFile) photo = await compressImage(photoFile);
+      const url = document.getElementById('wishUrl').value;
+      await db.wishlist.add({ name, photo, url });
+      closeModal('wishModal');
+      renderWishlist();
+    }
+
+    async function deleteWish(id) {
+      await db.wishlist.delete(id);
+      renderWishlist();
+    }
+
+    // ------------------ TRADE / SELL ------------------
+    async function renderTradeList() {
+      const tradeCopies = await db.copies.filter(c => c.tradeStatus).toArray();
+      let html = `<h2>💰 Trade/Sell</h2>`;
+      for (let copy of tradeCopies) {
+        const deck = await db.decks.get(copy.deckId);
+        html += `<div style="background:#16213e;padding:12px;border-radius:8px;margin-bottom:16px;line-height:1.8;">
+          <strong>${deck?.name || 'Unknown Deck'}</strong> - ${copy.condition}<br>
+          Price: $${copy.askingPrice || 'N/A'}<br>
+          <button class="other" onclick="markSold(${copy.id})">Mark as Sold/Traded</button></div>`;
+      }
+      if (tradeCopies.length === 0) html += '<p>No items for trade/sale.</p>';
+      mainContent.innerHTML = html;
+    }
+
+    async function markSold(copyId) {
+      if (!confirm('Mark this copy as sold/traded and remove it from your collection?')) return;
+      await db.copies.delete(copyId);
+      renderTradeList();
+    }
+
+    // ------------------ STATISTICS ------------------
+    async function renderStats() {
+      const decks = await db.decks.toArray();
+      const copies = await db.copies.toArray();
+      const uniqueDecks = decks.length;
+      const totalCopies = copies.length;
+      const brandCount = {};
+      decks.forEach(d => { const b = d.brand || 'Unknown'; brandCount[b] = (brandCount[b]||0)+1; });
+      const conditionCount = { Sealed: 0, Opened: 0, Used: 0 };
+      copies.forEach(c => { conditionCount[c.condition]++; });
+      const sealedTotal = conditionCount['Sealed'] || 0;
+      const openedTotal = (conditionCount['Opened']||0) + (conditionCount['Used']||0);
+
+      let html = `<h2>📊 Statistics</h2>
+        <div class="stats-grid">
+          <div class="stat-card"><div class="value">${uniqueDecks}</div>Unique Decks</div>
+          <div class="stat-card"><div class="value">${totalCopies}</div>Total Copies</div>
+        </div>
+        <canvas id="brandChart" width="240" height="160"></canvas>
+        <canvas id="conditionChart" width="240" height="160"></canvas>`;
+      mainContent.innerHTML = html;
+
+      const brandCtx = document.getElementById('brandChart').getContext('2d');
+      const sortedBrands = Object.keys(brandCount).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      );
+      const sortedData = sortedBrands.map(brand => brandCount[brand]);
+
+      new Chart(brandCtx, {
+        type: 'bar', data: {
+          labels: sortedBrands,
+          datasets: [{ label: 'Decks by Brand', data: sortedData, backgroundColor: '#ffd700' }]
+        }
+      });
+      const condCtx = document.getElementById('conditionChart').getContext('2d');
+      new Chart(condCtx, {
+        type: 'pie', data: {
+          labels: ['Sealed', 'Opened/Used'],
+          datasets: [{ data: [sealedTotal, openedTotal], backgroundColor: ['#ffd700','#e94560'] }]
+        }
+      });
+    }
+
+    // ------------------ IMPORT / EXPORT (Blob ↔ base64) ------------------
+    async function exportData() {
+      const decks = await db.decks.toArray();
+      const decksForExport = await Promise.all(decks.map(async d => {
+        const photos = d.photos || [];
+        const outPhotos = [];
+        for (const p of photos) {
+          if (typeof p === 'string') outPhotos.push(p);
+          else outPhotos.push(await blobToDataUrl(p));
+        }
+        return { ...d, photos: outPhotos };
+      }));
+
+      const wishlist = await db.wishlist.toArray();
+      const wishlistForExport = await Promise.all(wishlist.map(async w => {
+        let photo = w.photo;
+        if (photo && typeof photo !== 'string') photo = await blobToDataUrl(photo);
+        return { ...w, photo };
+      }));
+
+      const data = {
+        decks: decksForExport,
+        copies: await db.copies.toArray(),
+        series: await db.series.toArray(),
+        wishlist: wishlistForExport,
+        tags: await db.tags.toArray()
+      };
+      const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `playing-card-collection-backup-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function importData(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const data = JSON.parse(text);
+        if (!data.decks || !data.copies || !data.series || !data.wishlist) throw new Error('Invalid format');
+
+        const decksForImport = await Promise.all(data.decks.map(async d => {
+          const photos = d.photos || [];
+          const outPhotos = [];
+          for (const p of photos) {
+            if (typeof p === 'string' && p.startsWith('data:')) {
+              outPhotos.push(dataUrlToBlob(p));
+            } else {
+              outPhotos.push(p);
+            }
+          }
+          return { ...d, photos: outPhotos };
+        }));
+
+        const wishlistForImport = await Promise.all(data.wishlist.map(async w => {
+          let photo = w.photo;
+          if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+            photo = dataUrlToBlob(photo);
+          }
+          return { ...w, photo };
+        }));
+
+        await db.transaction('rw', db.decks, db.copies, db.series, db.wishlist, db.tags, async () => {
+          await db.decks.clear(); await db.copies.clear(); await db.series.clear(); await db.wishlist.clear(); await db.tags.clear();
+          await db.decks.bulkAdd(decksForImport);
+          await db.copies.bulkAdd(data.copies);
+          await db.series.bulkAdd(data.series);
+          await db.wishlist.bulkAdd(wishlistForImport);
+          if (data.tags) await db.tags.bulkAdd(data.tags);
+        });
+        alert('Import successful!');
+        renderView();
+      } catch (e) { alert('Import failed: ' + e.message); }
+      event.target.value = '';
+    }
+
+    // ------------------ INIT ------------------
+    window.onload = () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      }
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeImageModal();
+      });
+      renderView();
+    };
+    window.onresize = () => { if (window.innerWidth >= 768) document.getElementById('drawer').classList.add('open'); };
+    if (window.innerWidth >= 768) document.getElementById('drawer').classList.add('open');
+  </script>
+</body>
+</html>
